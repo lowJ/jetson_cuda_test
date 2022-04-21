@@ -51,7 +51,7 @@ def cannyHoughBenchmarking(img_path):
         frame_normal = cv2.HoughLines(frame_normal, RHO, THETA, THRESHOLD)
         t_normal_canny_hough_end = time.perf_counter()
         normal_run_time = (t_normal_canny_hough_end - t_normal_canny_hough_start) * 1000
-        print(f"Canny Normal execution time{normal_run_time}ms")
+        print(f"Canny Hough Normal execution time{normal_run_time}ms")
         
         print("Running Canny Edge and Hough CUDA...")
         t_gpu_upload = time.perf_counter()
@@ -72,18 +72,18 @@ def cannyHoughBenchmarking(img_path):
         cuda_total_time = (t_gpu_download - t_gpu_upload) * 1000
         cuda_run_time = (t_cuda_canny_hough_end - t_cuda_canny_hough_start) * 1000
         gpu_up_and_down_time = cuda_total_time - cuda_run_time
-        print(f"Cuda Canny Total Time: {cuda_total_time}ms")
-        print(f"Cuda Canny run time: {cuda_run_time}ms")
+        print(f"Cuda Canny Hough Total Time: {cuda_total_time}ms")
+        print(f"Cuda Canny Hough run time: {cuda_run_time}ms")
         print(f"GPU Upload and Download Time: {gpu_up_and_down_time}ms")
 
 
 print("CANNY EDGE BENCHMARKS")
 print("\n")
-print("Testing on 1080p Image")
-cannyBenchmarking("test_img1080.png")
-print("\n")
 print("Testing on 480p Image")
 cannyBenchmarking("test_img480.png")
+print("\n")
+print("Testing on 1080p Image")
+cannyBenchmarking("test_img1080.png")
 print("\n")
 print("CANNY+HOUGH BENCHMARKS")
 print("\n")

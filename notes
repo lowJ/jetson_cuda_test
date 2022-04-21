@@ -1,0 +1,7 @@
+Set 5W mode
+sudo nvpmodel -m 1
+
+Set 10W mode (MAXN)
+sudo nvpmodel -m 0
+
+source:https://jetsonhacks.com/2019/04/10/jetson-nano-use-more-power/
