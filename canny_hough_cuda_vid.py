@@ -13,6 +13,10 @@ THRESHOLD1 = 67
 THRESHOLD2 = 110
 APERATURE = 3
 
+#NUM_WARMUP_RUNS = 0
+#https://stackoverflow.com/questions/41098237/is-the-warmup-code-necessary-when-measuring-cuda-kernel-running-time
+#First few runs allow GPU to warm up
+
 RHO = 1.9
 THETA = 0.01837
 THRESHOLD = 99

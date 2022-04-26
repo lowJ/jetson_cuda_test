@@ -51,7 +51,6 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
 
         while(1):
             ret, frame = vid.read()
-            print(frame_count)
             if ret:
                 if frame.any():
                     frame_count += 1
