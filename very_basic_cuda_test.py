@@ -1,4 +1,5 @@
 import cv2
+from cv2 import cuda
 import time
 import numpy as np
 import gpu_instance as gi
@@ -6,6 +7,7 @@ import math
 
 
 VID_NAME = "road_vid480.mov"
+#VID_NAME = "sample.mp4"
 
 NUM_RUNS = 1
 
@@ -78,6 +80,7 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
         frame_count = 0
 
         t_start = time.perf_counter()
+        gpu_frame=cv2.cuda_GpuMat()
 
         while(1):
             ret, frame = vid.read()
@@ -86,24 +89,31 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
                     frame_count += 1
                     frame = applyGaussianBlur(frame, ksize)
                     frame= cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    #frame = rectTopDownMask(frame, rectTopMaskHeight)
+
+                    frame = cv2.Canny(frame, cannyFirstThreshold, cannySecondThreshold, apertureSize=3)
+
+                    frame = rectTopDownMask(frame, rectTopMaskHeight)
                     
                     #Do cuda stuff here
 
                     #Allocate memory on gpu
-                    cuMat = cv2.cuda_GpuMat(frame)
-                    tempLines = cv2.cuda_GpuMat()
+                    #tempLines = cv2.cuda_GpuMat()
 
                     #upload the current frame to the gpu
-                    cuMat.upload(frame)
+
+
+
+                    hough_cpu_lines = cv2.HoughLines(frame,resolutionRho,resolutionTheta,threshold)
+                    gpu_frame.upload(frame)
                     #cuMat = cuMat.convertTo(cv2.CV_8UC1, cuMat)
 
                     #create the canny detector object (way may only need to call this once?)
                     #detector = cv2.cuda.createCannyEdgeDetector(cannyFirstThreshold, cannySecondThreshold)
-                    detector = cv2.cuda.createCannyEdgeDetector(100, 200)
+                    cannyDetector = cv2.cuda.createCannyEdgeDetector(low_thresh=100, high_thresh=200)
 
                     #run the canny edge algorithm on the frame in the gpu, cuMat contains the result
-                    detector.detect(cuMat, tempLines)
+
+                    dstImg = cannyDetector.detect(gpu_frame)
                     
 
 
@@ -111,26 +121,38 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
 
                     ##cv2.HoughLines(edges,resolutionRho,resolutionTheta,threshold)
                     ##Create the hough lines detector (replacing function as seen above)
-                    #detectorHough = cv2.cuda.createHoughLinesDetector(resolutionRho, resolutionTheta, threshold)
+                    detectorHough = cv2.cuda.createHoughLinesDetector(rho=resolutionRho, theta=resolutionTheta, threshold=threshold)
 
                     ##Run the algorithim and detect lines, place detected lines into gpu memory (tempLines), the cuMat does not get modified
-                    #detectorHough.detect(cuMat, tempLines)
+                    lines = detectorHough.detect(dstImg)
 
 
                     ##Download the lines in the gpu memory (tempLines) into the cpu memory (res)
-                    #res = None
-                    #detectorHough.downloadResults(tempLines, res)
-                    #print(res) #returns None (why?)
+                    res = None
 
                     #Download the cuMat, this shold just return canny edge applied 
                     #newframe = cuMat.download()
-                    res = tempLines.download()
-                    len(res)
-                    len(res[0])
+#                    len(res)
+#                    len(res[0])
+                    hough_gpu_lines = lines.download()
+                    hough_gpu_lines = hough_gpu_lines[0]
 
-                    cv2.imshow('hi', cuMat.download())
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+                    hough_gpu_lines = sorted(hough_gpu_lines, key= lambda x:x[1])
+
+                    print("GPU LINES")
+                    for x in hough_gpu_lines:
+                        print(x)
+
+                    print("CPU LINES")
+                    hough_cpu_lines = sorted(hough_cpu_lines, key= lambda x:x[0][1])
+                    for x in hough_cpu_lines:
+                        print(x)
+                    #print(hough_cpu_lines)
+
+
+                    #cv2.imshow('hi', dstImg.download())
+                    #if cv2.waitKey(25) & 0xFF == ord('q'):
+                    #    break
 
 
 canny_hough_cuda(VID_NAME, "time.png", NUM_RUNS)
