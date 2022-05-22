@@ -53,6 +53,71 @@ def applyContrastAdjustment(img, a, b, doContrastThreshold):
 
     return img
 
+def convertPolarToCartesianGPU(lines):
+    #print("ur mom")
+    #print(lines)
+    rtnLines = []
+    for line in lines:
+        len = 2000
+        rho,theta = line
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + len*(-b))
+        y1 = int(y0 + len*(a))
+        x2 = int(x0 - len*(-b))
+        y2 = int(y0 - len*(a))
+        rtnLines.append((x1, y1, x2, y2))
+        #cv2.line(img,(x1,y1),(x2,y2),(0,0,255),2)
+    return rtnLines
+
+def drawAverageLines(img, avg):
+    if(np.any(avg[0])):
+        cv2.line(img, (avg[0][0], avg[0][1]), (avg[0][2], avg[0][3]), (0, 255, 0), 5)
+    if(np.any(avg[1])):
+        cv2.line(img, (avg[1][0], avg[1][1]), (avg[1][2], avg[1][3]), (0, 255, 0), 5)
+
+
+
+def average(img, lines):
+
+    def make_points(img, average):
+        #print("average" + str(average))
+        slope, y_int = average
+        y1 = img.shape[0]
+        y2 = int(y1 * (1/4))
+        x1 = int((y1 - y_int) // slope )
+        x2 = int((y2 - y_int) // slope )
+        return np.array([x1, y1, x2, y2])
+
+    slopes = []
+    for line in lines:
+        x1, y1, x2, y2  = np.reshape(line, 4)
+        parameters = np.polyfit((x1, x2), (y1, y2), 1)
+        slope = parameters[0]
+        y_int = parameters[1]
+        slopes.append((slope, y_int))
+
+    # filter horizontal slopes
+    HORIZONTAL_THRESHOLD = 0.00001
+    slopes = [s for s in slopes if s[0] > HORIZONTAL_THRESHOLD or s[0] < -HORIZONTAL_THRESHOLD]
+
+    left = [s for s in slopes if s[0] < 0]
+    right = [s for s in slopes if s[0] > 0]
+    left_line = None
+    right_line = None
+    if(len(left)):
+        left_avg = np.average(left, axis=0)
+        left_line = make_points(img, left_avg)
+
+    if(len(right)):
+        right_avg = np.average(right, axis=0)
+        right_line = make_points(img, right_avg)
+
+    return [left_line, right_line]
+
+
 def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
     alpha=0.6
     beta=0.4
@@ -87,6 +152,7 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
             if ret:
                 if frame.any():
                     frame_count += 1
+                    orig_frame = frame.copy()
                     frame = applyGaussianBlur(frame, ksize)
                     frame= cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -137,22 +203,34 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
                     hough_gpu_lines = lines.download()
                     hough_gpu_lines = hough_gpu_lines[0]
 
-                    hough_gpu_lines = sorted(hough_gpu_lines, key= lambda x:x[1])
+                    #hough_gpu_lines = sorted(hough_gpu_lines, key= lambda x:x[1])
 
                     print("GPU LINES")
-                    for x in hough_gpu_lines:
-                        print(x)
+                    #for x in hough_gpu_lines:
+                    #    print(x)
 
                     print("CPU LINES")
-                    hough_cpu_lines = sorted(hough_cpu_lines, key= lambda x:x[0][1])
-                    for x in hough_cpu_lines:
-                        print(x)
+                    #hough_cpu_lines = sorted(hough_cpu_lines, key= lambda x:x[0][1])
+                    #print(hough_cpu_lines)
+                    #for x in hough_cpu_lines:
+                    #    print(x)
                     #print(hough_cpu_lines)
 
 
-                    #cv2.imshow('hi', dstImg.download())
-                    #if cv2.waitKey(25) & 0xFF == ord('q'):
-                    #    break
+                    lines_gpu = convertPolarToCartesianGPU(hough_gpu_lines)
+                    #print(lines_gpu)
+
+                    lanes_gpu = average(frame, lines_gpu)
+                    print(lanes_gpu)
+
+                    drawAverageLines(orig_frame, lanes_gpu)
+
+                    
+
+
+                    cv2.imshow('hi', orig_frame)
+                    if cv2.waitKey(25) & 0xFF == ord('q'):
+                        break
 
 
 canny_hough_cuda(VID_NAME, "time.png", NUM_RUNS)
