@@ -79,6 +79,11 @@ def drawAverageLines(img, avg):
         cv2.line(img, (avg[1][0], avg[1][1]), (avg[1][2], avg[1][3]), (0, 255, 0), 5)
 
 
+def rectTopDownCrop(img, h):
+    height = img.shape[0]
+    width = img.shape[1]
+    cropped = img[height-h:height, 0:width]
+    return cropped 
 
 def average(img, lines):
 
@@ -117,6 +122,18 @@ def average(img, lines):
 
     return [left_line, right_line]
 
+def shift_lane_lines_down(frame, avg, y):
+    height = frame.shape[0]
+    width = frame.shape[1]
+    y = height-y
+    if(np.any(avg[0])):
+        avg[0][1] += y
+        avg[0][3] += y
+
+    if(np.any(avg[1])):
+        avg[1][1] += y
+        avg[1][3] += y
+    return avg
 
 def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
     alpha=0.6
@@ -156,9 +173,9 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
                     frame = applyGaussianBlur(frame, ksize)
                     frame= cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                    frame = cv2.Canny(frame, cannyFirstThreshold, cannySecondThreshold, apertureSize=3)
+                    #frame = cv2.Canny(frame, cannyFirstThreshold, cannySecondThreshold, apertureSize=3)
 
-                    frame = rectTopDownMask(frame, rectTopMaskHeight)
+                    frame = rectTopDownCrop(frame, rectTopMaskHeight)
                     
                     #Do cuda stuff here
 
@@ -169,7 +186,7 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
 
 
 
-                    hough_cpu_lines = cv2.HoughLines(frame,resolutionRho,resolutionTheta,threshold)
+                    #hough_cpu_lines = cv2.HoughLines(frame,resolutionRho,resolutionTheta,threshold)
                     gpu_frame.upload(frame)
                     #cuMat = cuMat.convertTo(cv2.CV_8UC1, cuMat)
 
@@ -177,16 +194,11 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
                     #detector = cv2.cuda.createCannyEdgeDetector(cannyFirstThreshold, cannySecondThreshold)
                     cannyDetector = cv2.cuda.createCannyEdgeDetector(low_thresh=100, high_thresh=200)
 
-                    #run the canny edge algorithm on the frame in the gpu, cuMat contains the result
 
                     dstImg = cannyDetector.detect(gpu_frame)
+
                     
 
-
-                    #img_cu = img_cu.converTo(cv2.CV_32FC1, img_cu)
-
-                    ##cv2.HoughLines(edges,resolutionRho,resolutionTheta,threshold)
-                    ##Create the hough lines detector (replacing function as seen above)
                     detectorHough = cv2.cuda.createHoughLinesDetector(rho=resolutionRho, theta=resolutionTheta, threshold=threshold)
 
                     ##Run the algorithim and detect lines, place detected lines into gpu memory (tempLines), the cuMat does not get modified
@@ -204,24 +216,13 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
                     hough_gpu_lines = hough_gpu_lines[0]
 
                     #hough_gpu_lines = sorted(hough_gpu_lines, key= lambda x:x[1])
-
-                    print("GPU LINES")
-                    #for x in hough_gpu_lines:
-                    #    print(x)
-
-                    print("CPU LINES")
                     #hough_cpu_lines = sorted(hough_cpu_lines, key= lambda x:x[0][1])
-                    #print(hough_cpu_lines)
-                    #for x in hough_cpu_lines:
-                    #    print(x)
-                    #print(hough_cpu_lines)
-
 
                     lines_gpu = convertPolarToCartesianGPU(hough_gpu_lines)
-                    #print(lines_gpu)
 
                     lanes_gpu = average(frame, lines_gpu)
-                    print(lanes_gpu)
+
+                    lanes_gpu = shift_lane_lines_down(orig_frame, lanes_gpu, rectTopMaskHeight)
 
                     drawAverageLines(orig_frame, lanes_gpu)
 
