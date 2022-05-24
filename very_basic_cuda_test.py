@@ -9,14 +9,35 @@ import math
 VID_NAME = "road_vid480.mov"
 #VID_NAME = "sample.mp4"
 
-NUM_RUNS = 5
+NUM_RUNS = 1
+
+DO_CUDA = 1
 
 
 #https://stackoverflow.com/questions/41098237/is-the-warmup-code-necessary-when-measuring-cuda-kernel-running-time
 #First few runs allow GPU to warm up
 
 
-#VID_NAME = str(input("INPUT VID: ") or "road_vid480.mov")
+DO_CUDA= int(input("DO CUDA: "))
+VID_NAME = str(input("INPUT VID: ") or "road_vid480.mov")
+
+def convertPolarToCartesian(lines):
+    rtnLines = []
+    for line in lines:
+        len = 2000
+        rho,theta = line[0]
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + len*(-b))
+        y1 = int(y0 + len*(a))
+        x2 = int(x0 - len*(-b))
+        y2 = int(y0 - len*(a))
+        rtnLines.append((x1, y1, x2, y2))
+        #cv2.line(img,(x1,y1),(x2,y2),(0,0,255),2)
+    return rtnLines
+
 
 def rectTopDownMask(img, h):
     height = img.shape[0]
@@ -300,7 +321,10 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
     ksize=7
     cannyFirstThreshold=57
     cannySecondThreshold=144
-    rectTopMaskHeight=90
+    #rectTopMaskHeight=90 #This is for 480
+    #rectTopMaskHeight=202 # This is for 1080
+    rectTopMaskHeight = 0
+    rectTopMaskRatio =0.18703
     rectBottomMaskHeight=640
 
 
@@ -315,14 +339,20 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
         cannyDetector = cv2.cuda.createCannyEdgeDetector(low_thresh=100, high_thresh=200)
 
         detectorHough = cv2.cuda.createHoughLinesDetector(rho=resolutionRho, theta=resolutionTheta, threshold=threshold)
+        print(f"DO_CUDA={DO_CUDA}")
 
         while(1):
             ret, frame = vid.read()
             #Create Detecor Objects for using algorithims in gpu
 
+
             if ret:
                 if frame.any():
+
                     frame_count += 1
+                    height = frame.shape[0]
+                    rectTopMaskHeight = int(height * rectTopMaskRatio)
+
 
                     #Save a copy of the original frame for streaming later
                     orig_frame = frame.copy()
@@ -337,24 +367,36 @@ def canny_hough_cuda(VID_NAME, IMG_OUT, n_runs):
 
                     #Crop the region of interest
                     frame = rectTopDownCrop(frame, rectTopMaskHeight)
+
+                    lines_gpu = None
+
+                    if(DO_CUDA):
+
                     
-                    #Upload frame to GPU
-                    gpu_frame.upload(frame)
- 
-                    #Run Canny Edge detection on GPU frame
-                    canny_frame = cannyDetector.detect(gpu_frame)
+                        #Upload frame to GPU
+                        gpu_frame.upload(frame)
+     
+                        #Run Canny Edge detection on GPU frame
+                        canny_frame = cannyDetector.detect(gpu_frame)
 
-                    #Run Hough Edge detection and return array of lines
-                    lines = detectorHough.detect(canny_frame)
+                        #Run Hough Edge detection and return array of lines
+                        lines = detectorHough.detect(canny_frame)
 
-                    #Download array of lines from GPU
-                    hough_gpu_lines = lines.download()
+                        #Download array of lines from GPU
+                        hough_gpu_lines = lines.download()
 
-                    #Extract Relevent Data from the array
-                    hough_gpu_lines = hough_gpu_lines[0]
+                        #Extract Relevent Data from the array
+                        hough_gpu_lines = hough_gpu_lines[0]
 
-                    #Convert the lines to cartesian form
-                    lines_gpu = convertPolarToCartesianGPU(hough_gpu_lines)
+                        #Convert the lines to cartesian form
+                        lines_gpu = convertPolarToCartesianGPU(hough_gpu_lines)
+                    else:
+                        frame = cv2.Canny(frame, cannyFirstThreshold,cannySecondThreshold)
+
+                        lines_gpu = cv2.HoughLines(frame,resolutionRho,resolutionTheta,threshold)
+
+                        lines_gpu = convertPolarToCartesian(lines_gpu)
+
 
                     #Parse the array and average out lines to get 2 distinct lane lines
                     lanes_gpu = average(frame, lines_gpu)
